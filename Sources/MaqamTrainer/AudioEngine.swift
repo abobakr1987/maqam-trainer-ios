@@ -2,12 +2,20 @@ import Foundation
 import AVFoundation
 import Combine
 
-/// Mutable state shared with the real-time render callback of the tone
-/// player. Written from the main thread, read on the audio thread.
-private final class ToneState {
+/// One oscillator voice of the tone player.
+private final class ToneVoice {
     var frequency: Double = 440.0
     var phase: Double = 0.0
+    var amplitude: Float = 0.22
     var isOn: Bool = false
+}
+
+/// Mutable state shared with the real-time render callback of the tone
+/// player. Written from the main thread, read on the audio thread.
+/// Voice 0 plays one-shot tones (guide notes, scales); voices 1...3 are
+/// the vocal trainer's sustained drone layers (base, fifth, octave).
+private final class ToneState {
+    var voices: [ToneVoice] = [ToneVoice(), ToneVoice(), ToneVoice(), ToneVoice()]
 }
 
 /// Live microphone pitch coach + quarter-tone-exact tone player.
@@ -32,6 +40,11 @@ final class AudioEngine: ObservableObject {
     @Published var level: Float = 0
     @Published var isListening: Bool = false
     @Published var permissionDenied: Bool = false
+    /// Raw pitch of the latest capture buffer as fractional MIDI
+    /// (quarter-tone precise, independent of any maqam), or nil when the
+    /// latest buffer carried no confident pitch. Consumed by the vocal
+    /// trainer; updated once per capture buffer while listening.
+    @Published var rawMidi: Double? = nil
 
     // MARK: Private state
 
@@ -99,6 +112,7 @@ final class AudioEngine: ObservableObject {
         DispatchQueue.main.async {
             self.isListening = false
             self.level = 0
+            self.rawMidi = nil
         }
     }
 
@@ -121,12 +135,15 @@ final class AudioEngine: ObservableObject {
                 self.detectedFrequency = 0
                 self.detectedNoteName = "—"
                 self.centsDeviation = 0
+                self.rawMidi = nil
                 return
             }
             guard let frequency = Self.detectPitch(samples: samples, sampleRate: sampleRate) else {
+                self.rawMidi = nil
                 return
             }
             self.detectedFrequency = frequency
+            self.rawMidi = 69.0 + 12.0 * log2(frequency / 440.0)
 
             // Position inside the octave above the tonic, in cents.
             var wrapped = (1200.0 * log2(frequency / maqam.tonicFrequency))
@@ -217,13 +234,13 @@ final class AudioEngine: ObservableObject {
             let sampleRate = 44100.0
             for frame in 0..<Int(frameCount) {
                 var value: Float = 0
-                if state.isOn {
-                    state.phase += 2.0 * Double.pi * state.frequency / sampleRate
-                    if state.phase > 2.0 * Double.pi { state.phase -= 2.0 * Double.pi }
+                for voice in state.voices where voice.isOn {
+                    voice.phase += 2.0 * Double.pi * voice.frequency / sampleRate
+                    if voice.phase > 2.0 * Double.pi { voice.phase -= 2.0 * Double.pi }
                     // Fundamental + two harmonics: a plain, pitch-clear tone.
-                    value = Float(sin(state.phase)
-                                  + 0.35 * sin(2.0 * state.phase)
-                                  + 0.12 * sin(3.0 * state.phase)) * 0.22
+                    value += Float(sin(voice.phase)
+                                   + 0.35 * sin(2.0 * voice.phase)
+                                   + 0.12 * sin(3.0 * voice.phase)) * voice.amplitude
                 }
                 for buffer in buffers {
                     if let data = buffer.mData {
@@ -239,8 +256,8 @@ final class AudioEngine: ObservableObject {
         toneNode = node
     }
 
-    /// Play one tone at an exact frequency (quarter tones included).
-    func playTone(frequency: Double, duration: Double = 0.55) {
+    /// Session + engine setup shared by one-shot tones and the drone.
+    private func ensureToneEngineRunning() {
         setupToneIfNeeded()
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playAndRecord, mode: .default,
@@ -250,11 +267,44 @@ final class AudioEngine: ObservableObject {
         if !toneEngine.isRunning {
             try? toneEngine.start()
         }
-        toneState.frequency = frequency
-        toneState.isOn = true
+    }
+
+    /// Play one tone at an exact frequency (quarter tones included).
+    func playTone(frequency: Double, duration: Double = 0.55) {
+        ensureToneEngineRunning()
+        toneState.voices[0].frequency = frequency
+        toneState.voices[0].isOn = true
         let state = toneState
         DispatchQueue.global().asyncAfter(deadline: .now() + duration) {
-            state.isOn = false
+            state.voices[0].isOn = false
+        }
+    }
+
+    // MARK: Drone (vocal trainer)
+
+    /// Start or update the sustained reference drone on voices 1...3:
+    /// the base note, optionally its fifth (+700 cents) and its octave,
+    /// at the same relative levels as the web trainer (0.20 / 0.10 / 0.08).
+    func startDrone(baseFrequency: Double, fifth: Bool, octave: Bool) {
+        ensureToneEngineRunning()
+        let base = toneState.voices[1]
+        base.frequency = baseFrequency
+        base.amplitude = 0.20
+        base.isOn = true
+        let fifthVoice = toneState.voices[2]
+        fifthVoice.frequency = baseFrequency * pow(2.0, 700.0 / 1200.0)
+        fifthVoice.amplitude = 0.10
+        fifthVoice.isOn = fifth
+        let octaveVoice = toneState.voices[3]
+        octaveVoice.frequency = baseFrequency * 2.0
+        octaveVoice.amplitude = 0.08
+        octaveVoice.isOn = octave
+    }
+
+    /// Silence all drone layers (one-shot tones are not affected).
+    func stopDrone() {
+        for index in 1..<toneState.voices.count {
+            toneState.voices[index].isOn = false
         }
     }
 
