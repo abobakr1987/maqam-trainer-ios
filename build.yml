@@ -1,0 +1,80 @@
+name: Build (compile verification)
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: List schemes
+        run: xcodebuild -list
+
+      # Compile-verification only: no signing, no archive, no .app install.
+      # The scheme name matches the SPM executable target/product name.
+      - name: Build for iOS (unsigned)
+        run: >
+          xcodebuild build
+          -scheme MaqamTrainer
+          -destination 'generic/platform=iOS'
+          CODE_SIGNING_ALLOWED=NO
+
+  # Builds the real app target from MaqamTrainer.xcodeproj (same Swift
+  # sources, real Info.plist, asset catalog) with signing fully disabled,
+  # then packages the .app as an unsigned .ipa. SideStore / AltStore
+  # re-sign it with a free Apple ID at install time on the device.
+  unsigned-ipa:
+    runs-on: macos-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: List schemes (Xcode project)
+        run: xcodebuild -list -project MaqamTrainer.xcodeproj
+
+      - name: Build app (unsigned)
+        run: >
+          xcodebuild build
+          -project MaqamTrainer.xcodeproj
+          -scheme MaqamTrainer
+          -configuration Release
+          -destination 'generic/platform=iOS'
+          -derivedDataPath ${{ github.workspace }}/build/DerivedData
+          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_REQUIRED=NO
+          CODE_SIGN_IDENTITY=""
+
+      - name: Package unsigned .ipa
+        run: |
+          set -euo pipefail
+          PRODUCTS_DIR="${{ github.workspace }}/build/DerivedData/Build/Products/Release-iphoneos"
+          APP_PATH="$(find "$PRODUCTS_DIR" -maxdepth 1 -name '*.app' -type d | head -n 1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app found under $PRODUCTS_DIR"
+            ls -la "$PRODUCTS_DIR" || true
+            exit 1
+          fi
+          echo "Packaging $APP_PATH"
+          rm -rf Payload MaqamTrainer-unsigned.ipa
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -qry MaqamTrainer-unsigned.ipa Payload
+          ls -lh MaqamTrainer-unsigned.ipa
+          unzip -l MaqamTrainer-unsigned.ipa | head -n 30
+
+      - name: Upload unsigned .ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: MaqamTrainer-unsigned-ipa
+          path: MaqamTrainer-unsigned.ipa
+          if-no-files-found: error
