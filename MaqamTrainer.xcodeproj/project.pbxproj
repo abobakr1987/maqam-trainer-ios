@@ -14,6 +14,9 @@
 		000000000000000000000024 /* AudioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000014 /* AudioEngine.swift */; };
 		000000000000000000000025 /* TeacherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000015 /* TeacherView.swift */; };
 		000000000000000000000026 /* TeacherAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000016 /* TeacherAudio.swift */; };
+		00000000000000000000002A /* TransitionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000001B /* TransitionsView.swift */; };
+		00000000000000000000002B /* BreathingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000001C /* BreathingView.swift */; };
+		00000000000000000000002C /* CoursePathView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000001D /* CoursePathView.swift */; };
 		000000000000000000000027 /* BundleModuleShim.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000001A /* BundleModuleShim.swift */; };
 		000000000000000000000028 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000018 /* Assets.xcassets */; };
 		000000000000000000000029 /* TeacherAudio in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000019 /* TeacherAudio */; };
@@ -27,6 +30,9 @@
 		000000000000000000000014 /* AudioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioEngine.swift; sourceTree = "<group>"; };
 		000000000000000000000015 /* TeacherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeacherView.swift; sourceTree = "<group>"; };
 		000000000000000000000016 /* TeacherAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeacherAudio.swift; sourceTree = "<group>"; };
+		00000000000000000000001B /* TransitionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransitionsView.swift; sourceTree = "<group>"; };
+		00000000000000000000001C /* BreathingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreathingView.swift; sourceTree = "<group>"; };
+		00000000000000000000001D /* CoursePathView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoursePathView.swift; sourceTree = "<group>"; };
 		00000000000000000000001A /* BundleModuleShim.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundleModuleShim.swift; sourceTree = "<group>"; };
 		000000000000000000000017 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		000000000000000000000018 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -72,6 +78,9 @@
 				000000000000000000000014 /* AudioEngine.swift */,
 				000000000000000000000015 /* TeacherView.swift */,
 				000000000000000000000016 /* TeacherAudio.swift */,
+				00000000000000000000001B /* TransitionsView.swift */,
+				00000000000000000000001C /* BreathingView.swift */,
+				00000000000000000000001D /* CoursePathView.swift */,
 				000000000000000000000017 /* Info.plist */,
 				000000000000000000000018 /* Assets.xcassets */,
 				000000000000000000000019 /* TeacherAudio */,
@@ -165,6 +174,9 @@
 				000000000000000000000024 /* AudioEngine.swift in Sources */,
 				000000000000000000000025 /* TeacherView.swift in Sources */,
 				000000000000000000000026 /* TeacherAudio.swift in Sources */,
+				00000000000000000000002A /* TransitionsView.swift in Sources */,
+				00000000000000000000002B /* BreathingView.swift in Sources */,
+				00000000000000000000002C /* CoursePathView.swift in Sources */,
 				000000000000000000000027 /* BundleModuleShim.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
