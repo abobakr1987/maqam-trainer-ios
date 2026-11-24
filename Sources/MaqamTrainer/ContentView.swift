@@ -1,31 +1,56 @@
 import SwiftUI
 
+/// The app's top-level tabs. Course-path items jump between tabs through
+/// the shared selection binding.
+enum AppTab: Hashable {
+    case coach, teacher, transitions, course, maqams, piano
+}
+
 struct ContentView: View {
     @StateObject private var engine = AudioEngine()
+    @StateObject private var courseProgress = CourseProgress()
+    @State private var selectedTab: AppTab = .coach
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             NavigationView {
                 CoachView()
             }
             .tabItem { Label("المدرب اللايف", systemImage: "mic.fill") }
+            .tag(AppTab.coach)
 
             NavigationView {
                 TeacherView()
             }
             .tabItem { Label("المدرّس", systemImage: "graduationcap.fill") }
+            .tag(AppTab.teacher)
+
+            NavigationView {
+                TransitionsView()
+            }
+            .tabItem { Label("الانتقالات", systemImage: "arrow.left.arrow.right") }
+            .tag(AppTab.transitions)
+
+            NavigationView {
+                CoursePathView(selectedTab: $selectedTab)
+            }
+            .tabItem { Label("مسار الإتقان", systemImage: "map.fill") }
+            .tag(AppTab.course)
 
             NavigationView {
                 MaqamListView()
             }
             .tabItem { Label("المقامات", systemImage: "music.note.list") }
+            .tag(AppTab.maqams)
 
             NavigationView {
                 PianoView()
             }
             .tabItem { Label("البيانو", systemImage: "pianokeys") }
+            .tag(AppTab.piano)
         }
         .environmentObject(engine)
+        .environmentObject(courseProgress)
     }
 }
 

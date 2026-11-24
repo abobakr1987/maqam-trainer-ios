@@ -25,7 +25,7 @@ struct TeacherView: View {
 
                 Text("مدرّسك الافتراضي")
                     .font(.title3).bold()
-                Text("شخصية مدرّس مولّدة بالذكاء الاصطناعي — بيغنّي لك المقام بصوته وتقول وراه.")
+                Text("الدروس مسجّلة بصوت بشري حقيقي — اسمع المقام وقوله وراه.")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
