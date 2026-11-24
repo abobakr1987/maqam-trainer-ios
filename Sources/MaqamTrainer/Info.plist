@@ -5,7 +5,7 @@
 	<key>CFBundleName</key>
 	<string>MaqamTrainer</string>
 	<key>CFBundleDisplayName</key>
-	<string>مدرب المقامات</string>
+	<string>MaqamTrainer</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.abobakr.maqamtrainer</string>
 	<key>CFBundleVersion</key>
