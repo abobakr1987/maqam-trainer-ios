@@ -54,9 +54,18 @@ struct ContentView: View {
     }
 }
 
-/// Simple maqam reference: tonic, English degree names, and the character
-/// note for each of the nine maqams.
+/// Maqam reference: tonic, English degree names, and the character note
+/// for each of the nine maqams — plus the teacher's recorded voice for
+/// every maqam that has one. Per the app's rule, a maqam's scale in the
+/// learning screens is SUNG in the recorded human voice; piano tones
+/// live only in the piano tab. A maqam whose recording has not arrived
+/// yet honestly shows «بيتحضّر» instead of any substitute sound.
 struct MaqamListView: View {
+    @StateObject private var player = TeacherPlayer()
+    @State private var playingMaqamID: String?
+    @State private var playingKind: TeacherAudioKind?
+    private let library = TeacherAudioLibrary()
+
     var body: some View {
         List(Maqam.all) { maqam in
             Section(header: Text("\(maqam.nameArabic) — الركوز \(maqam.tonicName)")) {
@@ -65,9 +74,49 @@ struct MaqamListView: View {
                 Text(maqam.comment)
                     .font(.footnote)
                     .foregroundColor(.secondary)
+                audioRow(for: maqam, kind: .scale,
+                         title: "🎤 اسمع السلّم بصوت المدرّس",
+                         missingNote: "السلّم الصوتي بيتحضّر")
+                audioRow(for: maqam, kind: .phrase,
+                         title: "🎵 اسمع جملة بالمقام بصوت المدرّس",
+                         missingNote: nil)
             }
         }
         .navigationTitle("المقامات")
+        .onDisappear { player.stop() }
+        .onChange(of: player.isPlaying) { playing in
+            if !playing {
+                playingMaqamID = nil
+                playingKind = nil
+            }
+        }
+    }
+
+    private func isPlaying(_ maqam: Maqam, _ kind: TeacherAudioKind) -> Bool {
+        player.isPlaying && playingMaqamID == maqam.id && playingKind == kind
+    }
+
+    @ViewBuilder
+    private func audioRow(for maqam: Maqam, kind: TeacherAudioKind,
+                          title: String, missingNote: String?) -> some View {
+        if let url = library.url(forMaqamID: maqam.id, kind: kind) {
+            Button {
+                if isPlaying(maqam, kind) {
+                    player.stop()
+                } else {
+                    playingMaqamID = maqam.id
+                    playingKind = kind
+                    player.play(url: url, kind: kind)
+                }
+            } label: {
+                Label(isPlaying(maqam, kind) ? "⏹ وقّف" : title,
+                      systemImage: isPlaying(maqam, kind) ? "stop.fill" : "play.fill")
+            }
+        } else if let missingNote {
+            Text(missingNote)
+                .font(.footnote)
+                .foregroundColor(.orange)
+        }
     }
 }
 
