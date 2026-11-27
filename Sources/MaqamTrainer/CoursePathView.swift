@@ -27,6 +27,8 @@ final class CourseProgress: ObservableObject {
 /// Where a course item takes the user when tapped (besides its checkbox).
 enum CourseItemAction {
     case tab(AppTab)
+    /// Open one maqam's own page in the «المقامات» tab.
+    case maqam(String)
     case none
 }
 
@@ -51,10 +53,10 @@ struct CourseStage: Identifiable {
 }
 
 extension CourseStage {
-    /// Maqams whose full scale recording is bundled in the teacher tab.
-    private static let scaleReadyIDs: Set<String> = ["rast", "bayati", "nahawand", "kurd", "ajam", "hijazkar"]
-    /// Maqams whose sung phrase is bundled in the teacher tab.
-    private static let phraseReadyIDs: Set<String> = ["hijaz", "nahawand", "saba", "sikah"]
+    /// Maqams whose full scale recording is bundled on their page.
+    private static let scaleReadyIDs: Set<String> = ["rast", "bayati", "hijaz", "nahawand", "kurd", "ajam", "hijazkar"]
+    /// Maqams whose sung phrase is bundled on their page.
+    private static let phraseReadyIDs: Set<String> = ["rast", "bayati", "hijaz", "nahawand", "saba", "sikah"]
 
     static func makeStages() -> [CourseStage] {
         // Stage 1 — one item per maqam for its scale.
@@ -62,14 +64,14 @@ extension CourseStage {
             if scaleReadyIDs.contains(maqam.id) {
                 return CourseItem(
                     id: "s1-scale-\(maqam.id)",
-                    title: "اسمع سلّم \(maqam.nameArabic) في تبويب المدرّس وقوله وراه صعودًا ونزولًا",
-                    action: .tab(.teacher))
+                    title: "اسمع سلّم \(maqam.nameArabic) في صفحة المقام وقوله وراه صعودًا ونزولًا",
+                    action: .maqam(maqam.id))
             }
             return CourseItem(
                 id: "s1-scale-\(maqam.id)",
-                title: "اسمع سلّم \(maqam.nameArabic) في تبويب المدرّس وقوله وراه",
+                title: "اسمع سلّم \(maqam.nameArabic) في صفحة المقام وقوله وراه",
                 note: "سلّم \(maqam.nameArabic) لسه بيتحضّر — اسمع جملته في المرحلة التانية دلوقتي",
-                action: .tab(.teacher),
+                action: .maqam(maqam.id),
                 available: false)
         }
 
@@ -80,7 +82,7 @@ extension CourseStage {
                 CourseItem(
                     id: "s2-phrase-\(maqam.id)",
                     title: "اسمع جملة \(maqam.nameArabic) بصوت المدرّس ولاحظ الجنس والقفلة",
-                    action: .tab(.teacher))
+                    action: .maqam(maqam.id))
             }
 
         return [
@@ -171,6 +173,7 @@ extension CourseStage {
 /// with per-step checkmarks persisted in UserDefaults.
 struct CoursePathView: View {
     @EnvironmentObject private var progress: CourseProgress
+    @EnvironmentObject private var appState: AppState
     @Binding var selectedTab: AppTab
 
     private let stages = CourseStage.makeStages()
@@ -263,6 +266,13 @@ struct CoursePathView: View {
             if case .tab(let tab) = item.action {
                 Button("افتح") {
                     selectedTab = tab
+                }
+                .font(.callout)
+                .buttonStyle(.bordered)
+            } else if case .maqam(let maqamID) = item.action {
+                Button("افتح") {
+                    appState.openMaqamID = maqamID
+                    selectedTab = .maqams
                 }
                 .font(.callout)
                 .buttonStyle(.bordered)

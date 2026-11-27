@@ -1,29 +1,41 @@
 import SwiftUI
 
-/// The app's top-level tabs. Course-path items jump between tabs through
-/// the shared selection binding.
+/// The app's top-level tabs: five, so everything fits the tab bar
+/// with no "More" overflow. Everything about one maqam lives on
+/// that maqam's own page (reached from «المقامات»); the other tabs
+/// are the shared gym (the live coach), transitions, the course
+/// path, and the free piano.
 enum AppTab: Hashable {
-    case coach, teacher, transitions, course, maqams, piano
+    case maqams, coach, transitions, course, piano
+}
+
+/// Cross-tab requests: a maqam page (or a course step) can ask the
+/// coach to pre-select a maqam, or ask the maqam list to open one
+/// maqam's page directly.
+final class AppState: ObservableObject {
+    @Published var coachMaqamID: String?
+    @Published var openMaqamID: String?
 }
 
 struct ContentView: View {
     @StateObject private var engine = AudioEngine()
     @StateObject private var courseProgress = CourseProgress()
-    @State private var selectedTab: AppTab = .coach
+    @StateObject private var appState = AppState()
+    @State private var selectedTab: AppTab = .maqams
 
     var body: some View {
         TabView(selection: $selectedTab) {
+            NavigationView {
+                MaqamListView(selectedTab: $selectedTab)
+            }
+            .tabItem { Label("المقامات", systemImage: "music.note.list") }
+            .tag(AppTab.maqams)
+
             NavigationView {
                 CoachView()
             }
             .tabItem { Label("المدرب اللايف", systemImage: "mic.fill") }
             .tag(AppTab.coach)
-
-            NavigationView {
-                TeacherView()
-            }
-            .tabItem { Label("المدرّس", systemImage: "graduationcap.fill") }
-            .tag(AppTab.teacher)
 
             NavigationView {
                 TransitionsView()
@@ -38,12 +50,6 @@ struct ContentView: View {
             .tag(AppTab.course)
 
             NavigationView {
-                MaqamListView()
-            }
-            .tabItem { Label("المقامات", systemImage: "music.note.list") }
-            .tag(AppTab.maqams)
-
-            NavigationView {
                 PianoView()
             }
             .tabItem { Label("البيانو", systemImage: "pianokeys") }
@@ -51,72 +57,53 @@ struct ContentView: View {
         }
         .environmentObject(engine)
         .environmentObject(courseProgress)
+        .environmentObject(appState)
     }
 }
 
-/// Maqam reference: tonic, English degree names, and the character note
-/// for each of the nine maqams — plus the teacher's recorded voice for
-/// every maqam that has one. Per the app's rule, a maqam's scale in the
-/// learning screens is SUNG in the recorded human voice; piano tones
-/// live only in the piano tab. A maqam whose recording has not arrived
-/// yet honestly shows «بيتحضّر» instead of any substitute sound.
+/// The nine maqams as one simple list. Tapping a maqam opens its
+/// page — the single home for that maqam: the teacher's recorded
+/// voice (scale + phrase), the written lesson, a jump into the
+/// live coach pre-set to it, and its piano keys. Nothing about a
+/// maqam lives anywhere else.
 struct MaqamListView: View {
-    @StateObject private var player = TeacherPlayer()
-    @State private var playingMaqamID: String?
-    @State private var playingKind: TeacherAudioKind?
+    @Binding var selectedTab: AppTab
+    @EnvironmentObject private var appState: AppState
+    @State private var navSelection: String?
     private let library = TeacherAudioLibrary()
 
     var body: some View {
-        List(Maqam.all) { maqam in
-            Section(header: Text("\(maqam.nameArabic) — الركوز \(maqam.tonicName)")) {
-                Text(maqam.degreeNames.joined(separator: " · "))
-                    .font(.callout)
-                Text(maqam.comment)
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-                audioRow(for: maqam, kind: .scale,
-                         title: "🎤 اسمع السلّم بصوت المدرّس",
-                         missingNote: "السلّم الصوتي بيتحضّر")
-                audioRow(for: maqam, kind: .phrase,
-                         title: "🎵 اسمع جملة بالمقام بصوت المدرّس",
-                         missingNote: nil)
+        List {
+            ForEach(Maqam.all) { maqam in
+                NavigationLink(tag: maqam.id, selection: $navSelection) {
+                    MaqamPage(maqam: maqam, selectedTab: $selectedTab)
+                } label: {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(maqam.nameArabic)
+                            .font(.headline)
+                        Text("الركوز \(maqam.tonicName) · \(maqam.degreeNames.joined(separator: " · "))")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .environment(\.layoutDirection, .leftToRight)
+                        if library.url(forMaqamID: maqam.id, kind: .scale) == nil {
+                            Text("السلّم الصوتي بيتحضّر")
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
             }
         }
         .navigationTitle("المقامات")
-        .onDisappear { player.stop() }
-        .onChange(of: player.isPlaying) { playing in
-            if !playing {
-                playingMaqamID = nil
-                playingKind = nil
-            }
-        }
+        .onAppear { applyOpenRequest() }
+        .onChange(of: appState.openMaqamID) { _ in applyOpenRequest() }
     }
 
-    private func isPlaying(_ maqam: Maqam, _ kind: TeacherAudioKind) -> Bool {
-        player.isPlaying && playingMaqamID == maqam.id && playingKind == kind
-    }
-
-    @ViewBuilder
-    private func audioRow(for maqam: Maqam, kind: TeacherAudioKind,
-                          title: String, missingNote: String?) -> some View {
-        if let url = library.url(forMaqamID: maqam.id, kind: kind) {
-            Button {
-                if isPlaying(maqam, kind) {
-                    player.stop()
-                } else {
-                    playingMaqamID = maqam.id
-                    playingKind = kind
-                    player.play(url: url, kind: kind)
-                }
-            } label: {
-                Label(isPlaying(maqam, kind) ? "⏹ وقّف" : title,
-                      systemImage: isPlaying(maqam, kind) ? "stop.fill" : "play.fill")
-            }
-        } else if let missingNote {
-            Text(missingNote)
-                .font(.footnote)
-                .foregroundColor(.orange)
-        }
+    private func applyOpenRequest() {
+        guard let id = appState.openMaqamID else { return }
+        appState.openMaqamID = nil
+        navSelection = id
     }
 }
 

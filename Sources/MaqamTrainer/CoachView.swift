@@ -5,7 +5,9 @@ import Combine
 /// the current target scale degree in real time.
 struct CoachView: View {
     @EnvironmentObject private var engine: AudioEngine
+    @EnvironmentObject private var appState: AppState
     @State private var selectedMaqam: Maqam = Maqam.all[0]
+    @State private var appliedPresetID: String?
     /// 0-based index of the scale degree the student should sing/play now.
     @State private var targetStep: Int = 0
 
@@ -141,7 +143,23 @@ struct CoachView: View {
             .padding()
         }
         .navigationTitle("المدرب اللايف")
-        .onAppear { engine.setMaqam(selectedMaqam) }
+        .onAppear {
+            engine.setMaqam(selectedMaqam)
+            applyPreset()
+        }
+        .onChange(of: appState.coachMaqamID) { _ in applyPreset() }
+    }
+
+    /// A maqam page (or course step) can ask the coach to open
+    /// pre-set to one maqam. Applied once per request so the
+    /// student's own picker choice is never overridden afterwards.
+    private func applyPreset() {
+        guard let id = appState.coachMaqamID, id != appliedPresetID,
+              let preset = Maqam.all.first(where: { $0.id == id }) else { return }
+        appliedPresetID = id
+        selectedMaqam = preset
+        engine.setMaqam(preset)
+        targetStep = 0
     }
 }
 
@@ -197,6 +215,10 @@ private struct ExerciseResult {
     let score: Int
     let avgCents: Int
     let heard: Bool
+    /// True when another sound in the room (music, TV) drowned the
+    /// student's voice out for this note — the note is excluded
+    /// from the final score instead of counting as a failure.
+    let contaminated: Bool
 }
 
 /// The Vocal Trainer section of the coach: live quarter-tone readout,
@@ -207,6 +229,8 @@ private struct ExerciseResult {
 /// exercise never fights the free-practice mode above.
 private struct VocalTrainerView: View {
     @EnvironmentObject private var engine: AudioEngine
+    @EnvironmentObject private var appState: AppState
+    @State private var appliedExPresetID: String?
 
     // Live readout + hold meter.
     @State private var smoother = PitchSmoother()
@@ -236,6 +260,7 @@ private struct VocalTrainerView: View {
     @State private var exMutedUntil: Date = .distantPast
     @State private var exListenEnd: Date = .distantPast
     @State private var exFrames: Int = 0
+    @State private var exForeignFrames: Int = 0
     @State private var exInFrames: Int = 0
     @State private var exCentsSum: Double = 0
     @State private var exResults: [ExerciseResult] = []
@@ -294,6 +319,17 @@ private struct VocalTrainerView: View {
             }
             pendingStart = .none
         }
+        .onAppear { applyExPreset() }
+        .onChange(of: appState.coachMaqamID) { _ in applyExPreset() }
+    }
+
+    /// Same cross-tab preset as the free coach above, applied to
+    /// the guided exercise's maqam.
+    private func applyExPreset() {
+        guard let id = appState.coachMaqamID, id != appliedExPresetID,
+              let preset = Maqam.all.first(where: { $0.id == id }) else { return }
+        appliedExPresetID = id
+        exMaqam = preset
     }
 
     // MARK: Readout + hold meter UI
@@ -507,6 +543,7 @@ private struct VocalTrainerView: View {
 
     private func chipColor(for index: Int) -> Color {
         if index < exResults.count {
+            if exResults[index].contaminated { return Color.yellow.opacity(0.35) }
             return exResults[index].score >= 60 ? Color.green.opacity(0.3) : Color.red.opacity(0.25)
         }
         return Color.gray.opacity(0.15)
@@ -767,6 +804,7 @@ private struct VocalTrainerView: View {
             if now >= exPhaseEnd {
                 exPhase = .listening
                 exFrames = 0
+                exForeignFrames = 0
                 exInFrames = 0
                 exCentsSum = 0
                 exListenEnd = now.addingTimeInterval(Double(exSpeedMs) / 1000.0)
@@ -778,10 +816,20 @@ private struct VocalTrainerView: View {
                       let detected = detectedMidi, exIndex < exSequence.count {
                 let target = exSequence[exIndex].targetMidi
                 let cents = (foldToTarget(detected, target) - target) * 100
-                exFrames += 1
-                exCentsSum += cents
-                exAllCents.append(cents)
-                if abs(cents) <= Double(exAccuracy) { exInFrames += 1 }
+                if abs(cents) <= 150 {
+                    exFrames += 1
+                    exCentsSum += cents
+                    exAllCents.append(cents)
+                    if abs(cents) <= Double(exAccuracy) { exInFrames += 1 }
+                } else {
+                    // Farther than a quarter-tone-and-a-half from the
+                    // target even after octave folding: this cannot
+                    // be the student's attempt at this note. It is
+                    // another sound in the room (music, TV) or a
+                    // tracker glitch, and it must not poison the
+                    // note's score or the run's tendency.
+                    exForeignFrames += 1
+                }
             }
         case .between:
             if now >= exPhaseEnd {
@@ -801,9 +849,13 @@ private struct VocalTrainerView: View {
         let avg = exFrames > 0
             ? Int((exCentsSum / Double(exFrames)).rounded())
             : 0
+        let contaminated = exFrames == 0 && exForeignFrames >= 3
         exResults.append(ExerciseResult(label: note.label, score: score,
-                                        avgCents: avg, heard: exFrames > 0))
-        if exFrames > 0 {
+                                        avgCents: avg, heard: exFrames > 0,
+                                        contaminated: contaminated))
+        if contaminated {
+            exLastMessage = "نغمة \(note.label): في صوت تاني كان مسموع حواليك وغطّى على صوتك — النغمة دي مش هتتحسب عليك"
+        } else if exFrames > 0 {
             if abs(avg) >= 8 {
                 let tendency = avg > 0 ? "ميلك فيها حاد +\(avg) سنت" : "ميلك فيها خافت \(avg) سنت"
                 exLastMessage = "نغمة \(note.label): درجتك \(score)٪ — \(tendency)"
@@ -821,11 +873,17 @@ private struct VocalTrainerView: View {
     private func finishExercise() {
         exActive = false
         exPhase = .finished
-        let total = exResults.reduce(0) { $0 + $1.score }
-        exFinalScore = exResults.isEmpty
+        // Notes drowned out by another sound in the room are not
+        // the student's failures — they leave the score entirely.
+        let countable = exResults.filter { !$0.contaminated }
+        let contaminatedCount = exResults.count - countable.count
+        let total = countable.reduce(0) { $0 + $1.score }
+        exFinalScore = countable.isEmpty
             ? 0
-            : Int((Double(total) / Double(exResults.count)).rounded())
-        if exAllCents.isEmpty {
+            : Int((Double(total) / Double(countable.count)).rounded())
+        if countable.isEmpty && !exResults.isEmpty {
+            exTendency = "التمرين كله اتشوّش بصوت تاني حواليك (موسيقى أو تلفزيون شغال؟) — ولا نغمة اتحسبت عليك. عيده في مكان هادي وانت قريب من الموبايل."
+        } else if exAllCents.isEmpty {
             exTendency = "مسمعتش صوتك في التمرين ده — قرّب الموبايل منك وغنّي بصوت أوضح المرة الجاية."
         } else {
             let avgC = Int((exAllCents.reduce(0.0, +) / Double(exAllCents.count)).rounded())
@@ -836,6 +894,9 @@ private struct VocalTrainerView: View {
             } else {
                 exTendency = "ميلك العام: مظبوط في النص — متوسط انحرافك \(avgC > 0 ? "+" : "")\(avgC) سنت بس."
             }
+        }
+        if contaminatedCount > 0 && !countable.isEmpty {
+            exTendency += " ولاحظت صوت تاني حواليك غطّى على \(contaminatedCount) نغمة، فشيلتهم من حسابك."
         }
     }
 
